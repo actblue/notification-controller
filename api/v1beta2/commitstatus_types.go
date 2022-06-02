@@ -14,19 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	"github.com/fluxcd/pkg/apis/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const (
-	AlertKind string = "Alert"
-)
-
-// AlertSpec defines an alerting rule for events involving a list of objects
-type AlertSpec struct {
+// CommitStatusSpec defines an alerting rule for events involving a list of objects
+type CommitStatusSpec struct {
 	// Send events using this provider.
 	// +required
 	ProviderRef meta.LocalObjectReference `json:"providerRef"`
@@ -39,16 +35,19 @@ type AlertSpec struct {
 	EventSeverity string `json:"eventSeverity,omitempty"`
 
 	// Filter events based on the involved objects.
+	// Only accepts Kustomization resources, since it's the only
+	// object that reconciles against Git.
 	// +required
 	EventSources []CrossNamespaceObjectReference `json:"eventSources"`
 
 	// A list of Golang regular expressions to be used for excluding messages.
 	// +optional
+	// TODO: should I keep this?
 	ExclusionList []string `json:"exclusionList,omitempty"`
 
-	// Short description of the impact and affected cluster.
+	// Parameters specific to the configuration of commit statuses
 	// +optional
-	Summary string `json:"summary,omitempty"`
+	Template CommitStatusTemplate `json:"template,omitempty"`
 
 	// This flag tells the controller to suspend subsequent events dispatching.
 	// Defaults to false.
@@ -56,8 +55,26 @@ type AlertSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// AlertStatus defines the observed state of Alert
-type AlertStatus struct {
+type CommitStatusTemplate struct {
+	// A string label to differentiate statuses from one another on a commit.
+	// GitHub calls this the commit status's "context".
+	// +required
+	Key string `json:"key"`
+
+	// A short description of the status.
+	// +optional
+	Description string `json:"description,omitempty"`
+
+	// A URL to associate with this status so as to allow users
+	// to easily see the source of the status from a link on the commit status.
+	// For example, if your continuous integration system is posting build status,
+	// you would want to provide the deep link for the build output for this specific SHA.
+	// +optional
+	TargetURL string `json:"targetUrl,omitempty"`
+}
+
+// CommitStatusStatus defines the observed state of CommitStatus
+type CommitStatusStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
@@ -73,43 +90,42 @@ type AlertStatus struct {
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description=""
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status",description=""
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].message",description=""
-// +kubebuilder:storageversion
 
-// Alert is the Schema for the alerts API
-type Alert struct {
+// CommitStatus is the Schema for the commit status API
+type CommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec AlertSpec `json:"spec,omitempty"`
+	Spec CommitStatusSpec `json:"spec,omitempty"`
 	// +kubebuilder:default:={"observedGeneration":-1}
-	Status AlertStatus `json:"status,omitempty"`
+	Status CommitStatusStatus `json:"status,omitempty"`
 }
 
 // GetStatusConditions returns a pointer to the Status.Conditions slice
 // Deprecated: use GetConditions instead.
-func (in *Alert) GetStatusConditions() *[]metav1.Condition {
+func (in *CommitStatus) GetStatusConditions() *[]metav1.Condition {
 	return &in.Status.Conditions
 }
 
 // GetConditions returns the status conditions of the object.
-func (in *Alert) GetConditions() []metav1.Condition {
+func (in *CommitStatus) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
 
 // SetConditions sets the status conditions on the object.
-func (in *Alert) SetConditions(conditions []metav1.Condition) {
+func (in *CommitStatus) SetConditions(conditions []metav1.Condition) {
 	in.Status.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true
 
-// AlertList contains a list of Alert
-type AlertList struct {
+// CommitStatusList contains a list of CommitStatus
+type CommitStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Alert `json:"items"`
+	Items           []CommitStatus `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Alert{}, &AlertList{})
+	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
 }
