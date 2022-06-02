@@ -140,6 +140,16 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Alert")
 		os.Exit(1)
 	}
+	if err = (&controllers.CommitStatusReconciler{
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Metrics: metricsH,
+	}).SetupWithManagerAndOptions(mgr, controllers.CommitStatusReconcilerOptions{
+		MaxConcurrentReconciles: concurrent,
+	}); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CommitStatus")
+		os.Exit(1)
+	}
 	if err = (&controllers.ReceiverReconciler{
 		Client:  mgr.GetClient(),
 		Scheme:  mgr.GetScheme(),
