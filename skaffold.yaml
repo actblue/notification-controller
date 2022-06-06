@@ -1,0 +1,26 @@
+apiVersion: skaffold/v2beta28
+kind: Config
+metadata:
+  name: notification-controller
+build:
+  artifacts:
+  - image:  k3d-notifications:5001/notification-controller
+# Hooks *should* be valid, but cause continuouis build in skaffold dev until the Makefile can be updated NOT to
+# unnecessarily regenerate the files each time
+#    hooks:
+#      before:
+#        - command: ["make", "generate"]
+#          os: [darwin, linux]
+#        - command: ["make", "install"]
+#          os: [darwin, linux]
+  local:
+    useBuildkit: true
+    push: true
+profiles:
+  - name: local-dev
+    activation:
+      - kubeContext: k3d-notifications
+    deploy:
+      kustomize:
+        paths:
+          - config/local-dev
