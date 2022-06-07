@@ -33,6 +33,12 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const (
+	Key         = "Key"
+	Description = "Description"
+	TargetUrl   = "TargetUrl"
+)
+
 type GitHub struct {
 	Owner  string
 	Repo   string
@@ -88,7 +94,7 @@ func NewGitHub(addr string, token string, certPool *x509.CertPool) (*GitHub, err
 }
 
 // Post Github commit status
-func (g *GitHub) Post(event events.Event) error {
+func (g *GitHub) Post(event events.Event, logger Logger) error {
 	// Skip progressing events
 	if event.Reason == "Progressing" {
 		return nil
@@ -106,13 +112,25 @@ func (g *GitHub) Post(event events.Event) error {
 	if err != nil {
 		return err
 	}
-	name, desc := formatNameAndDescription(event)
+
+	var key, desc, url string
+
+	if event.Metadata != nil && event.Metadata[Key] == "" {
+		key, desc = formatNameAndDescription(event)
+	} else {
+		key = event.Metadata[Key]
+		desc = event.Metadata[Description]
+		url = event.Metadata[TargetUrl]
+	}
 
 	status := &github.RepoStatus{
 		State:       &state,
-		Context:     &name,
+		Context:     &key,
 		Description: &desc,
+		TargetURL:   &url,
 	}
+
+	logger.Info("Posting to GitHub", "status", status, "event_metadata", event.Metadata)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

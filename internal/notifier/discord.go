@@ -56,7 +56,7 @@ func NewDiscord(hookURL string, proxyURL string, username string, channel string
 }
 
 // Post Discord message
-func (s *Discord) Post(event events.Event) error {
+func (s *Discord) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

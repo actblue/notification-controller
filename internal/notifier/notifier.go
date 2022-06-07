@@ -20,6 +20,11 @@ import (
 	"github.com/fluxcd/pkg/runtime/events"
 )
 
+type Logger interface {
+	Info(msg string, keysAndValues ...interface{})
+	Error(err error, msg string, keysAndValues ...interface{})
+}
+
 type Interface interface {
-	Post(event events.Event) error
+	Post(event events.Event, logger Logger) error
 }

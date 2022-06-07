@@ -78,7 +78,7 @@ func NewAzureDevOps(addr string, token string, certPool *x509.CertPool) (*AzureD
 }
 
 // Post Azure DevOps commit status
-func (a AzureDevOps) Post(event events.Event) error {
+func (a AzureDevOps) Post(event events.Event, logger Logger) error {
 	// Skip progressing events
 	if event.Reason == "Progressing" {
 		return nil

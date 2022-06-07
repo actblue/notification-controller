@@ -85,7 +85,7 @@ func NewGoogleChat(hookURL string, proxyURL string) (*GoogleChat, error) {
 }
 
 // Post Google Chat message
-func (s *GoogleChat) Post(event events.Event) error {
+func (s *GoogleChat) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

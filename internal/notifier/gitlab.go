@@ -66,7 +66,7 @@ func NewGitLab(addr string, token string, certPool *x509.CertPool) (*GitLab, err
 }
 
 // Post GitLab commit status
-func (g *GitLab) Post(event events.Event) error {
+func (g *GitLab) Post(event events.Event, logger Logger) error {
 	// Skip progressing events
 	if event.Reason == "Progressing" {
 		return nil

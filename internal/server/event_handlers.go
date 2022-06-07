@@ -25,6 +25,7 @@ import (
 	"github.com/fluxcd/notification-controller/api/v1beta2"
 	"io"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -92,7 +93,7 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 
 			notification := prepareNotificationEventForAlerts(event, alert)
 
-			go s.dispatchNotification(sender, notification, token)
+			go s.dispatchNotification(sender, notification, token, "alert")
 		}
 
 		// dispatch notifications
@@ -113,7 +114,7 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 
 			notification := prepareNotificationEventForCommitStatuses(event, cs)
 
-			go s.dispatchNotification(sender, notification, token)
+			go s.dispatchNotification(sender, notification, token, "commitstatus")
 		}
 
 		w.WriteHeader(http.StatusAccepted)
@@ -139,8 +140,8 @@ func (s *EventServer) getEventFromBody(r *http.Request) (*events.Event, error) {
 	return event, nil
 }
 
-func (s *EventServer) dispatchNotification(n notifier.Interface, e events.Event, token string) {
-	if err := n.Post(e); err != nil {
+func (s *EventServer) dispatchNotification(n notifier.Interface, e events.Event, token string, source string) {
+	if err := n.Post(e, s.logger); err != nil {
 		err = redactTokenFromError(err, token, s.logger)
 
 		s.logger.Error(err, "failed to send notification",
@@ -151,7 +152,10 @@ func (s *EventServer) dispatchNotification(n notifier.Interface, e events.Event,
 		s.logger.Info("sent notification",
 			"reconciler kind", e.InvolvedObject.Kind,
 			"name", e.InvolvedObject.Name,
-			"namespace", e.InvolvedObject.Namespace)
+			"namespace", e.InvolvedObject.Namespace,
+			"provider", reflect.TypeOf(n).Name(),
+			"source", source,
+		)
 	}
 }
 
@@ -223,6 +227,22 @@ func prepareNotificationEventForAlerts(event *events.Event, alert v1beta1.Alert)
 
 func prepareNotificationEventForCommitStatuses(event *events.Event, cs v1beta2.CommitStatus) events.Event {
 	notification := *event.DeepCopy()
-	// TODO
+
+	if notification.Metadata == nil {
+		notification.Metadata = map[string]string{}
+	}
+
+	x := cs.Spec.Parameters
+
+	notification.Metadata[notifier.Key] = x.Key
+	notification.Metadata[notifier.Description] = x.Description
+	notification.Metadata[notifier.TargetUrl] = x.TargetURL
+
+	if notification.Metadata[notifier.Key] == "" {
+
+		notification.Metadata[notifier.Key] = "commitstatus notification"
+	}
+
+	notification.Metadata["summary"] = "Hello Commit Status!"
 	return notification
 }

@@ -39,7 +39,7 @@ func NewMatrix(serverURL, token, roomId string, certPool *x509.CertPool) (*Matri
 	}, nil
 }
 
-func (m *Matrix) Post(event events.Event) error {
+func (m *Matrix) Post(event events.Event, logger Logger) error {
 	txId, err := sha1sum(event)
 	if err != nil {
 		return fmt.Errorf("unable to generate unique tx id: %s", err)

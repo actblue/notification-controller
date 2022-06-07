@@ -89,7 +89,7 @@ func NewGitHubDispatch(addr string, token string, certPool *x509.CertPool) (*Git
 }
 
 // Post GitHub Repository Dispatch webhook
-func (g *GitHubDispatch) Post(event events.Event) error {
+func (g *GitHubDispatch) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

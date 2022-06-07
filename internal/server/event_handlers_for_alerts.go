@@ -1,6 +1,6 @@
 package server
 
-//go:generate sh -c "sed -e 's/v1beta1.Alert/v1beta2.CommitStatus/g' -e 's/v1beta1/v1beta2/' -e 's/Alerts/CommitStatuses/g' -e 's/Alert/CommitStatus/g' -e 's/go:generate.*/ DO NOT EDIT -- generated file/' event_handlers_for_alerts.go > event_handlers_for_commitstatuses.go"
+//go:generate sh -c "sed -e 's/v1beta1.Alert/v1beta2.CommitStatus/g' -e 's/v1beta1/v1beta2/' -e 's/Alerts/CommitStatuses/g' -e 's/Alert/CommitStatus/g' -e 's/go:generate.*/ DO NOT EDIT -- generated from event_handlers_for_alerts.go/' event_handlers_for_alerts.go > event_handlers_for_commitstatuses.go"
 
 import (
 	"context"

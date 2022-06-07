@@ -52,7 +52,7 @@ func NewForwarder(hookURL string, proxyURL string, headers map[string]string, ce
 	}, nil
 }
 
-func (f *Forwarder) Post(event events.Event) error {
+func (f *Forwarder) Post(event events.Event, logger Logger) error {
 	err := postMessage(f.URL, f.ProxyURL, f.CertPool, event, func(req *retryablehttp.Request) {
 		req.Header.Set(NotificationHeader, event.ReportingController)
 		for key, val := range f.Headers {

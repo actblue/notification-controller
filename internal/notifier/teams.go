@@ -68,7 +68,7 @@ func NewMSTeams(hookURL string, proxyURL string, certPool *x509.CertPool) (*MSTe
 }
 
 // Post MS Teams message
-func (s *MSTeams) Post(event events.Event) error {
+func (s *MSTeams) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

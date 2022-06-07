@@ -53,7 +53,7 @@ func NewAzureEventHub(endpointURL, token, eventHubNamespace string) (*AzureEvent
 }
 
 // Post all notification-controller messages to EventHub
-func (e *AzureEventHub) Post(event events.Event) error {
+func (e *AzureEventHub) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

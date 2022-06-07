@@ -57,19 +57,19 @@ spec:
   eventSources:
     - kind: Kustomization
       name: podinfo
-#---
-#apiVersion: notification.toolkit.fluxcd.io/v1beta2
-#kind: CommitStatus
-#metadata:
-#  name: podinfo
-#spec:
-#  providerRef:
-#    name: podinfo
-#  eventSeverity: info
-#  eventSources:
-#    - kind: Kustomization
-#      name: podinfo
-#  parameters:
-#    key: something
-#    description: somehting
-#    targetUrl: something
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: CommitStatus
+metadata:
+  name: podinfo
+spec:
+  providerRef:
+    name: podinfo
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: podinfo
+  parameters:
+    key: cluster/development
+    description: Something cool happened
+    targetUrl: http://www.google.com

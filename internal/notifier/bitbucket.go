@@ -80,7 +80,7 @@ func NewBitbucket(addr string, token string, certPool *x509.CertPool) (*Bitbucke
 }
 
 // Post Bitbucket commit status
-func (b Bitbucket) Post(event events.Event) error {
+func (b Bitbucket) Post(event events.Event, logger Logger) error {
 	// Skip progressing events
 	if event.Reason == "Progressing" {
 		return nil

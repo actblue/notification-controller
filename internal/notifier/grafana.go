@@ -60,7 +60,7 @@ func NewGrafana(URL string, proxyURL string, token string, certPool *x509.CertPo
 }
 
 // Post annotation
-func (g *Grafana) Post(event events.Event) error {
+func (g *Grafana) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

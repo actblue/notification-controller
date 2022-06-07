@@ -60,7 +60,7 @@ func NewLark(address string) (*Lark, error) {
 	}, nil
 }
 
-func (l *Lark) Post(event events.Event) error {
+func (l *Lark) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

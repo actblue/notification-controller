@@ -58,7 +58,7 @@ func NewOpsgenie(hookURL string, proxyURL string, certPool *x509.CertPool, token
 }
 
 // Post opsgenie alert message
-func (s *Opsgenie) Post(event events.Event) error {
+func (s *Opsgenie) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

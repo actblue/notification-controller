@@ -20,6 +20,6 @@ import "github.com/fluxcd/pkg/runtime/events"
 
 type NopNotifier struct{}
 
-func (n *NopNotifier) Post(event events.Event) error {
+func (n *NopNotifier) Post(event events.Event, logger Logger) error {
 	return nil
 }

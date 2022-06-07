@@ -60,7 +60,7 @@ func NewRocket(hookURL string, proxyURL string, certPool *x509.CertPool, usernam
 }
 
 // Post Rocket message
-func (s *Rocket) Post(event events.Event) error {
+func (s *Rocket) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil

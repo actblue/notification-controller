@@ -25,7 +25,7 @@ func NewTelegram(channel, token string) (*Telegram, error) {
 	}, nil
 }
 
-func (t *Telegram) Post(event events.Event) error {
+func (t *Telegram) Post(event events.Event, logger Logger) error {
 	// Skip any update events
 	if isCommitStatus(event.Metadata, "update") {
 		return nil
