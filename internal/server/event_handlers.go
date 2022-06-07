@@ -44,68 +44,21 @@ import (
 
 func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
+		s.logger.Info("handleEvent called ")
+		event, err := s.getEventFromBody(r)
 		if err != nil {
-			s.logger.Error(err, "reading the request body failed")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
-
-		event := &events.Event{}
-		err = json.Unmarshal(body, event)
-		if err != nil {
-			s.logger.Error(err, "decoding the request body failed")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		cleanupMetadata(event)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		var allAlerts v1beta1.AlertList
-		err = s.kubeClient.List(ctx, &allAlerts)
+		// find matching alerts
+		alerts, err := s.getAlertsToDispatch(event, ctx)
 		if err != nil {
-			s.logger.Error(err, "listing alerts failed")
 			w.WriteHeader(http.StatusBadRequest)
 			return
-		}
-
-		// find matching alerts
-		alerts := make([]v1beta1.Alert, 0)
-	each_alert:
-		for _, alert := range allAlerts.Items {
-			// skip suspended and not ready alerts
-			isReady := conditions.IsReady(&alert)
-			if alert.Spec.Suspend || !isReady {
-				continue each_alert
-			}
-
-			// skip alert if the message matches a regex from the exclusion list
-			if len(alert.Spec.ExclusionList) > 0 {
-				for _, exp := range alert.Spec.ExclusionList {
-					if r, err := regexp.Compile(exp); err == nil {
-						if r.Match([]byte(event.Message)) {
-							continue each_alert
-						}
-					} else {
-						s.logger.Error(err, fmt.Sprintf("failed to compile regex: %s", exp))
-					}
-				}
-			}
-
-			// filter alerts by object and severity
-			for _, source := range alert.Spec.EventSources {
-				if source.Namespace == "" {
-					source.Namespace = alert.Namespace
-				}
-
-				if s.eventMatchesAlert(ctx, event, source, alert.Spec.EventSeverity) {
-					alerts = append(alerts, alert)
-				}
-			}
 		}
 
 		if len(alerts) == 0 {
@@ -133,155 +86,236 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 				continue
 			}
 
-			var provider v1beta1.Provider
-			providerName := types.NamespacedName{Namespace: alert.Namespace, Name: alert.Spec.ProviderRef.Name}
-
-			err = s.kubeClient.Get(ctx, providerName, &provider)
-			if err != nil {
-				s.logger.Error(err, "failed to read provider",
-					"reconciler kind", v1beta1.ProviderKind,
-					"name", providerName.Name,
-					"namespace", providerName.Namespace)
-				continue
+			token, sender, done := s.getNotifier(alert, err, ctx)
+			if done {
+				return
 			}
 
-			if provider.Spec.Suspend {
-				continue
-			}
+			notification := preparedNotificationEvent(event, alert)
 
-			webhook := provider.Spec.Address
-			username := provider.Spec.Username
-			proxy := provider.Spec.Proxy
-			token := ""
-			password := ""
-			headers := make(map[string]string)
-			if provider.Spec.SecretRef != nil {
-				var secret corev1.Secret
-				secretName := types.NamespacedName{Namespace: alert.Namespace, Name: provider.Spec.SecretRef.Name}
-
-				err = s.kubeClient.Get(ctx, secretName, &secret)
-				if err != nil {
-					s.logger.Error(err, "failed to read secret",
-						"reconciler kind", v1beta1.ProviderKind,
-						"name", providerName.Name,
-						"namespace", providerName.Namespace)
-					continue
-				}
-
-				if address, ok := secret.Data["address"]; ok {
-					webhook = string(address)
-				}
-
-				if p, ok := secret.Data["password"]; ok {
-					password = string(p)
-				}
-
-				if p, ok := secret.Data["proxy"]; ok {
-					proxy = string(p)
-				}
-
-				if t, ok := secret.Data["token"]; ok {
-					token = string(t)
-				}
-
-				if u, ok := secret.Data["username"]; ok {
-					username = string(u)
-				}
-
-				if h, ok := secret.Data["headers"]; ok {
-					err := yaml.Unmarshal(h, &headers)
-					if err != nil {
-						s.logger.Error(err, "failed to read headers from secret",
-							"reconciler kind", v1beta1.ProviderKind,
-							"name", providerName.Name,
-							"namespace", providerName.Namespace)
-						continue
-					}
-				}
-			}
-
-			var certPool *x509.CertPool
-			if provider.Spec.CertSecretRef != nil {
-				var secret corev1.Secret
-				secretName := types.NamespacedName{Namespace: alert.Namespace, Name: provider.Spec.CertSecretRef.Name}
-
-				err = s.kubeClient.Get(ctx, secretName, &secret)
-				if err != nil {
-					s.logger.Error(err, "failed to read secret",
-						"reconciler kind", v1beta1.ProviderKind,
-						"name", providerName.Name,
-						"namespace", providerName.Namespace)
-					continue
-				}
-
-				caFile, ok := secret.Data["caFile"]
-				if !ok {
-					s.logger.Error(err, "failed to read secret key caFile",
-						"reconciler kind", v1beta1.ProviderKind,
-						"name", providerName.Name,
-						"namespace", providerName.Namespace)
-					continue
-				}
-
-				certPool = x509.NewCertPool()
-				ok = certPool.AppendCertsFromPEM(caFile)
-				if !ok {
-					s.logger.Error(err, "could not append to cert pool",
-						"reconciler kind", v1beta1.ProviderKind,
-						"name", providerName.Name,
-						"namespace", providerName.Namespace)
-					continue
-				}
-			}
-
-			if webhook == "" {
-				s.logger.Error(nil, "provider has no address",
-					"reconciler kind", v1beta1.ProviderKind,
-					"name", providerName.Name,
-					"namespace", providerName.Namespace)
-				continue
-			}
-
-			factory := notifier.NewFactory(webhook, proxy, username, provider.Spec.Channel, token, headers, certPool, password)
-			sender, err := factory.Notifier(provider.Spec.Type)
-			if err != nil {
-				s.logger.Error(err, "failed to initialize provider",
-					"reconciler kind", v1beta1.ProviderKind,
-					"name", providerName.Name,
-					"namespace", providerName.Namespace)
-				continue
-			}
-
-			notification := *event.DeepCopy()
-			if alert.Spec.Summary != "" {
-				if notification.Metadata == nil {
-					notification.Metadata = map[string]string{
-						"summary": alert.Spec.Summary,
-					}
-				} else {
-					notification.Metadata["summary"] = alert.Spec.Summary
-				}
-			}
-
-			go func(n notifier.Interface, e events.Event) {
-				if err := n.Post(e); err != nil {
-					err = redactTokenFromError(err, token, s.logger)
-
-					s.logger.Error(err, "failed to send notification",
-						"reconciler kind", event.InvolvedObject.Kind,
-						"name", event.InvolvedObject.Name,
-						"namespace", event.InvolvedObject.Namespace)
-				} else {
-					s.logger.Info("sent notification",
-						"reconciler kind", event.InvolvedObject.Kind,
-						"name", event.InvolvedObject.Name,
-						"namespace", event.InvolvedObject.Namespace)
-				}
-			}(sender, notification)
+			go s.dispatchNotification(sender, notification, token)
 		}
 
 		w.WriteHeader(http.StatusAccepted)
 	}
+}
+
+func (s *EventServer) getEventFromBody(r *http.Request) (*events.Event, error) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.logger.Error(err, "reading the request body failed")
+		return nil, err
+	}
+	defer r.Body.Close()
+
+	event := &events.Event{}
+	err = json.Unmarshal(body, event)
+	if err != nil {
+		s.logger.Error(err, "decoding the request body failed")
+		return nil, err
+	}
+
+	cleanupMetadata(event)
+	return event, nil
+}
+
+func (s *EventServer) dispatchNotification(n notifier.Interface, e events.Event, token string) {
+	if err := n.Post(e); err != nil {
+		err = redactTokenFromError(err, token, s.logger)
+
+		s.logger.Error(err, "failed to send notification",
+			"reconciler kind", e.InvolvedObject.Kind,
+			"name", e.InvolvedObject.Name,
+			"namespace", e.InvolvedObject.Namespace)
+	} else {
+		s.logger.Info("sent notification",
+			"reconciler kind", e.InvolvedObject.Kind,
+			"name", e.InvolvedObject.Name,
+			"namespace", e.InvolvedObject.Namespace)
+	}
+}
+
+func preparedNotificationEvent(event *events.Event, alert v1beta1.Alert) events.Event {
+	notification := *event.DeepCopy()
+	if alert.Spec.Summary != "" {
+		if notification.Metadata == nil {
+			notification.Metadata = map[string]string{
+				"summary": alert.Spec.Summary,
+			}
+		} else {
+			notification.Metadata["summary"] = alert.Spec.Summary
+		}
+	}
+	return notification
+}
+
+// getNotifier -- returns a notifier object for the listed provider
+func (s *EventServer) getNotifier(alert v1beta1.Alert, err error, ctx context.Context) (string, notifier.Interface, bool) {
+	var provider v1beta1.Provider
+	providerName := types.NamespacedName{Namespace: alert.Namespace, Name: alert.Spec.ProviderRef.Name}
+
+	err = s.kubeClient.Get(ctx, providerName, &provider)
+	if err != nil {
+		s.logger.Error(err, "failed to read provider",
+			"reconciler kind", v1beta1.ProviderKind,
+			"name", providerName.Name,
+			"namespace", providerName.Namespace)
+		return "", nil, true // cont calling loop
+	}
+
+	if provider.Spec.Suspend {
+		return "", nil, true // cont calling loop
+	}
+
+	webhook := provider.Spec.Address
+	username := provider.Spec.Username
+	proxy := provider.Spec.Proxy
+	token := ""
+	password := ""
+	headers := make(map[string]string)
+	if provider.Spec.SecretRef != nil {
+		var secret corev1.Secret
+		secretName := types.NamespacedName{Namespace: alert.Namespace, Name: provider.Spec.SecretRef.Name}
+
+		err = s.kubeClient.Get(ctx, secretName, &secret)
+		if err != nil {
+			s.logger.Error(err, "failed to read secret",
+				"reconciler kind", v1beta1.ProviderKind,
+				"name", providerName.Name,
+				"namespace", providerName.Namespace)
+			return "", nil, true // cont calling loop
+		}
+
+		if address, ok := secret.Data["address"]; ok {
+			webhook = string(address)
+		}
+
+		if p, ok := secret.Data["password"]; ok {
+			password = string(p)
+		}
+
+		if p, ok := secret.Data["proxy"]; ok {
+			proxy = string(p)
+		}
+
+		if t, ok := secret.Data["token"]; ok {
+			token = string(t)
+		}
+
+		if u, ok := secret.Data["username"]; ok {
+			username = string(u)
+		}
+
+		if h, ok := secret.Data["headers"]; ok {
+			err := yaml.Unmarshal(h, &headers)
+			if err != nil {
+				s.logger.Error(err, "failed to read headers from secret",
+					"reconciler kind", v1beta1.ProviderKind,
+					"name", providerName.Name,
+					"namespace", providerName.Namespace)
+				return "", nil, true // cont calling loop
+			}
+		}
+	}
+
+	var certPool *x509.CertPool
+	if provider.Spec.CertSecretRef != nil {
+		var secret corev1.Secret
+		secretName := types.NamespacedName{Namespace: alert.Namespace, Name: provider.Spec.CertSecretRef.Name}
+
+		err = s.kubeClient.Get(ctx, secretName, &secret)
+		if err != nil {
+			s.logger.Error(err, "failed to read secret",
+				"reconciler kind", v1beta1.ProviderKind,
+				"name", providerName.Name,
+				"namespace", providerName.Namespace)
+			return "", nil, true // cont calling loop
+		}
+
+		caFile, ok := secret.Data["caFile"]
+		if !ok {
+			s.logger.Error(err, "failed to read secret key caFile",
+				"reconciler kind", v1beta1.ProviderKind,
+				"name", providerName.Name,
+				"namespace", providerName.Namespace)
+			return "", nil, true // cont calling loop
+		}
+
+		certPool = x509.NewCertPool()
+		ok = certPool.AppendCertsFromPEM(caFile)
+		if !ok {
+			s.logger.Error(err, "could not append to cert pool",
+				"reconciler kind", v1beta1.ProviderKind,
+				"name", providerName.Name,
+				"namespace", providerName.Namespace)
+			return "", nil, true // cont calling loop
+		}
+	}
+
+	if webhook == "" {
+		s.logger.Error(nil, "provider has no address",
+			"reconciler kind", v1beta1.ProviderKind,
+			"name", providerName.Name,
+			"namespace", providerName.Namespace)
+		return "", nil, true // cont calling loop
+	}
+
+	factory := notifier.NewFactory(webhook, proxy, username, provider.Spec.Channel, token, headers, certPool, password)
+	sender, err := factory.Notifier(provider.Spec.Type)
+	if err != nil {
+		s.logger.Error(err, "failed to initialize provider",
+			"reconciler kind", v1beta1.ProviderKind,
+			"name", providerName.Name,
+			"namespace", providerName.Namespace)
+		return "", nil, true // cont calling loop
+	}
+	return token, sender, false
+}
+
+// getAlertsToDispatch gets the list of alert CRs from the system
+func (s *EventServer) getAlertsToDispatch(event *events.Event, ctx context.Context) ([]v1beta1.Alert, error) {
+	alerts := make([]v1beta1.Alert, 0)
+
+	var allAlerts v1beta1.AlertList
+	err := s.kubeClient.List(ctx, &allAlerts)
+	if err != nil {
+		s.logger.Error(err, "listing alerts failed")
+		return alerts, err
+	}
+
+each_alert:
+	for _, alert := range allAlerts.Items {
+		// skip suspended and not ready alerts
+		isReady := conditions.IsReady(&alert)
+		if alert.Spec.Suspend || !isReady {
+			continue each_alert
+		}
+
+		// skip alert if the message matches a regex from the exclusion list
+		if len(alert.Spec.ExclusionList) > 0 {
+			for _, exp := range alert.Spec.ExclusionList {
+				if r, err := regexp.Compile(exp); err == nil {
+					if r.Match([]byte(event.Message)) {
+						continue each_alert
+					}
+				} else {
+					s.logger.Error(err, fmt.Sprintf("failed to compile regex: %s", exp))
+				}
+			}
+		}
+
+		// filter alerts by object and severity
+		for _, source := range alert.Spec.EventSources {
+			if source.Namespace == "" {
+				source.Namespace = alert.Namespace
+			}
+
+			if s.eventMatchesAlert(ctx, event, source, alert.Spec.EventSeverity) {
+				alerts = append(alerts, alert)
+			}
+		}
+	}
+	return alerts, nil
 }
 
 func (s *EventServer) eventMatchesAlert(ctx context.Context, event *events.Event, source v1beta1.CrossNamespaceObjectReference, severity string) bool {
