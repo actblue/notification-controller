@@ -271,6 +271,11 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 						"reconciler kind", event.InvolvedObject.Kind,
 						"name", event.InvolvedObject.Name,
 						"namespace", event.InvolvedObject.Namespace)
+				} else {
+					s.logger.Info("sent notification",
+						"reconciler kind", event.InvolvedObject.Kind,
+						"name", event.InvolvedObject.Name,
+						"namespace", event.InvolvedObject.Namespace)
 				}
 			}(sender, notification)
 		}

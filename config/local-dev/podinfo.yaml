@@ -15,7 +15,7 @@ metadata:
   name: podinfo
 spec:
   gitImplementation: libgit2
-  interval: 2m
+  interval: 30s
   secretRef:
     name: github-podinfo-ssh-deploy-key
   timeout: 2m
@@ -27,7 +27,7 @@ metadata:
   name: podinfo
 spec:
   targetNamespace: default
-  interval: 2m0s
+  interval: 30s
   prune: false
   sourceRef:
     kind: GitRepository
@@ -36,7 +36,7 @@ spec:
   path: ./kustomize
   wait: true
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1beta1
 kind: Provider
 metadata:
   name: podinfo
@@ -46,8 +46,8 @@ spec:
   secretRef:
     name: github-bcarrier92-commit-status-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
-kind: CommitStatus
+apiVersion: notification.toolkit.fluxcd.io/v1beta1
+kind: Alert
 metadata:
   name: podinfo
 spec:
@@ -57,7 +57,19 @@ spec:
   eventSources:
     - kind: Kustomization
       name: podinfo
-  template:
-    key: something
-    description: somehting
-    targetUrl: something
+#---
+#apiVersion: notification.toolkit.fluxcd.io/v1beta2
+#kind: CommitStatus
+#metadata:
+#  name: podinfo
+#spec:
+#  providerRef:
+#    name: podinfo
+#  eventSeverity: info
+#  eventSources:
+#    - kind: Kustomization
+#      name: podinfo
+#  parameters:
+#    key: something
+#    description: somehting
+#    targetUrl: something
