@@ -29,7 +29,7 @@ COPY internal/ internal/
 
 # build
 ENV CGO_ENABLED=0
-RUN xx-go build -a -o notification-controller main.go
+RUN xx-go build -o notification-controller main.go
 
 FROM alpine:3.16
 
