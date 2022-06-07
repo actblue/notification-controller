@@ -39,6 +39,7 @@ import (
 	crtlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/fluxcd/notification-controller/api/v1beta1"
+	"github.com/fluxcd/notification-controller/api/v1beta2"
 	"github.com/fluxcd/notification-controller/controllers"
 	"github.com/fluxcd/notification-controller/internal/server"
 	// +kubebuilder:scaffold:imports
@@ -55,6 +56,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
 	_ = v1beta1.AddToScheme(scheme)
+	_ = v1beta2.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 

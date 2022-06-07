@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	notifyv1 "github.com/fluxcd/notification-controller/api/v1beta1"
+	notifyv2 "github.com/fluxcd/notification-controller/api/v1beta2"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -50,6 +51,7 @@ var (
 func TestMain(m *testing.M) {
 	var err error
 	utilruntime.Must(notifyv1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(notifyv2.AddToScheme(scheme.Scheme))
 	//utilruntime.Must(sourcev1.AddToScheme(scheme.Scheme))
 
 	testEnv = testenv.New(testenv.WithCRDPath(

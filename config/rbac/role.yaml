@@ -53,6 +53,26 @@ rules:
 - apiGroups:
   - notification.toolkit.fluxcd.io
   resources:
+  - commitStatuss
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - notification.toolkit.fluxcd.io
+  resources:
+  - commitStatuss/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - notification.toolkit.fluxcd.io
+  resources:
   - providers
   verbs:
   - create

@@ -42,12 +42,11 @@ type CommitStatusSpec struct {
 
 	// A list of Golang regular expressions to be used for excluding messages.
 	// +optional
-	// TODO: should I keep this?
 	ExclusionList []string `json:"exclusionList,omitempty"`
 
 	// Parameters specific to the configuration of commit statuses
 	// +optional
-	Template CommitStatusTemplate `json:"template,omitempty"`
+	Parameters CommitStatusParameters `json:"parameters,omitempty"`
 
 	// This flag tells the controller to suspend subsequent events dispatching.
 	// Defaults to false.
@@ -55,7 +54,7 @@ type CommitStatusSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-type CommitStatusTemplate struct {
+type CommitStatusParameters struct {
 	// A string label to differentiate statuses from one another on a commit.
 	// GitHub calls this the commit status's "context".
 	// +required

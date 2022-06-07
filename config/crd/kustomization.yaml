@@ -3,5 +3,6 @@ kind: Kustomization
 resources:
 - bases/notification.toolkit.fluxcd.io_providers.yaml
 - bases/notification.toolkit.fluxcd.io_alerts.yaml
+- bases/notification.toolkit.fluxcd.io_commitstatuses.yaml
 - bases/notification.toolkit.fluxcd.io_receivers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource

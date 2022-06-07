@@ -35,3 +35,29 @@ spec:
   validation: client
   path: ./kustomize
   wait: true
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Provider
+metadata:
+  name: podinfo
+spec:
+  type: github
+  address: https://github.com/actblue/podinfo
+  secretRef:
+    name: github-bcarrier92-commit-status-token
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: CommitStatus
+metadata:
+  name: podinfo
+spec:
+  providerRef:
+    name: podinfo
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: podinfo
+  template:
+    key: something
+    description: somehting
+    targetUrl: something
