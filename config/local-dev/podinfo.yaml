@@ -1,0 +1,37 @@
+# Yes this is a secret -- a secret for a deploy key which only has access to read a fork of a public repository in a private organization.
+# Totally OK to commit this for testing purposes.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-podinfo-ssh-deploy-key
+data:
+  identity: LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNDbXNwNHJzVEdFY2RBUXpxQW5GYXhxNXVnRVBibjVVVkJjeitwUy82ekF1d0FBQUtpUzdsSTFrdTVTCk5RQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDQ21zcDRyc1RHRWNkQVF6cUFuRmF4cTV1Z0VQYm41VVZCY3orcFMvNnpBdXcKQUFBRUFMWVY3N2lrdTBDUmVaUCtkU09sdDlFWDlxNXM4RzR4UHFpTjJ5MEVnUmZxYXluaXV4TVlSeDBCRE9vQ2NWckdybQo2QVE5dWZsUlVGelA2bEwvck1DN0FBQUFIbU55WldGMFpXUWdabTl5SUdac2RYZ2diMjRnTWpBeU1pMHdOaTB3TmdFQ0F3ClFGQmdjPQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K
+  identity.pub: c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUtheW5pdXhNWVJ4MEJET29DY1ZyR3JtNkFROXVmbFJVRnpQNmxML3JNQzcgY3JlYXRlZCBmb3IgZmx1eCBvbiAyMDIyLTA2LTA2Cg==
+  known_hosts: Z2l0aHViLmNvbSBlY2RzYS1zaGEyLW5pc3RwMjU2IEFBQUFFMlZqWkhOaExYTm9ZVEl0Ym1semRIQXlOVFlBQUFBSWJtbHpkSEF5TlRZQUFBQkJCRW1LU0VOalFFZXpPbXhrWk15N29wS2d3RkI5bmt0NVlScllNak51RzVOODd1UmdnNkNMcmJvNXdBZFQveTZ2MG1LVjBVMncwV1oyWUIvKytUcG9ja2c9
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta1
+kind: GitRepository
+metadata:
+  name: podinfo
+spec:
+  gitImplementation: libgit2
+  interval: 2m
+  secretRef:
+    name: github-podinfo-ssh-deploy-key
+  timeout: 2m
+  url: ssh://git@github.com/actblue/podinfo.git
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+kind: Kustomization
+metadata:
+  name: podinfo
+spec:
+  targetNamespace: default
+  interval: 2m0s
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: podinfo
+  validation: client
+  path: ./kustomize
+  wait: true

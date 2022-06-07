@@ -3,3 +3,5 @@ kind: Kustomization
 namespace: flux-system
 resources:
   - deployment.yaml
+  - podinfo.yaml
+  - nocommit.yaml
