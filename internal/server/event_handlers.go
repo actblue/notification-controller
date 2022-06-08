@@ -17,6 +17,7 @@ limitations under the License.
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/fluxcd/notification-controller/internal/notifier"
@@ -112,7 +114,7 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			notification := prepareNotificationEventForCommitStatuses(event, cs)
+			notification := prepareNotificationEventForCommitStatuses(event, cs, s.logger.Error)
 
 			go s.dispatchNotification(sender, notification, token, "commitstatus")
 		}
@@ -225,7 +227,7 @@ func prepareNotificationEventForAlerts(event *events.Event, alert v1beta1.Alert)
 	return notification
 }
 
-func prepareNotificationEventForCommitStatuses(event *events.Event, cs v1beta2.CommitStatus) events.Event {
+func prepareNotificationEventForCommitStatuses(event *events.Event, cs v1beta2.CommitStatus, logError ErrorF) events.Event {
 	notification := *event.DeepCopy()
 
 	if notification.Metadata == nil {
@@ -234,15 +236,37 @@ func prepareNotificationEventForCommitStatuses(event *events.Event, cs v1beta2.C
 
 	x := cs.Spec.Parameters
 
-	notification.Metadata[notifier.Key] = x.Key
-	notification.Metadata[notifier.Description] = x.Description
-	notification.Metadata[notifier.TargetUrl] = x.TargetURL
+	var params map[string]interface{}
 
-	if notification.Metadata[notifier.Key] == "" {
+	params["CommitStatus"] = cs
+	params["Event"] = event
+	// TODO:  add in referenes from e.g. configmaps here
 
-		notification.Metadata[notifier.Key] = "commitstatus notification"
-	}
+	// TODO:  rename CommitStatus.Parameters back to Template and add in a Parameters field
+
+	notification.Metadata[notifier.Key] = expand(x.Key, params, logError)
+	notification.Metadata[notifier.Description] = expand(x.Description, params, logError)
+	notification.Metadata[notifier.TargetUrl] = expand(x.TargetURL, params, logError)
 
 	notification.Metadata["summary"] = "Hello Commit Status!"
 	return notification
+}
+
+type ErrorF func(err error, msg string, keysAndValues ...interface{})
+
+// TODO:  the reconciler should parse and validate all templates
+// expand expands a string as a golang text template and returns the result.
+func expand(temp string, data map[string]interface{}, logError ErrorF) string {
+	if kt, err := template.New("").Parse(temp); err != nil {
+		buf := bytes.NewBufferString("")
+		if err = kt.Execute(buf, data); err == nil {
+			return buf.String()
+		} else {
+			logError(err, "Error executing template", "template", temp, "params", data)
+		}
+	} else {
+		logError(err, "Error parsing template", "template", temp)
+	}
+
+	return temp
 }

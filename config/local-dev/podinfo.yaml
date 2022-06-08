@@ -69,7 +69,12 @@ spec:
   eventSources:
     - kind: Kustomization
       name: podinfo
-  parameters:
-    key: cluster/development
-    description: Something cool happened
-    targetUrl: http://www.google.com
+  template:
+    key: cluster/{{ .info.ClusterName}}
+    description: Something {{ .quality.status }} happened on with SLA {{ .info.SLA }} that was {{ .InvolvedObject.Kind }}
+    targetUrl: http://www.google.com/?q={{.quality.SLA}}
+    parameters:
+      - kind: ConfigMap
+        key: info
+      - kind: ConfigMap
+        key: quality
