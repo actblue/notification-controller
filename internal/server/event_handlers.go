@@ -25,6 +25,8 @@ import (
 	"github.com/fluxcd/notification-controller/api/v1beta1"
 	"github.com/fluxcd/notification-controller/api/v1beta2"
 	"io"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -34,13 +36,17 @@ import (
 
 	"github.com/fluxcd/notification-controller/internal/notifier"
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/go-logr/logr"
+)
+
+const (
+	// RevisionKey For backwards compatibility, include the revision without a group prefix
+	RevisionKey string = "revision"
 )
 
 func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.logger.Info("handleEvent called ")
-		event, err := s.getEventFromBody(r)
+		event, err := s.constructEventFromRequestBody(r)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -50,14 +56,14 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 		defer cancel()
 
 		// find matching alerts
-		alerts, err := s.getAlertsToDispatch(event, ctx)
+		alerts, err := s.findAlertsToDispatch(event, ctx)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		// find matching alerts
-		commitStatuses, err := s.getCommitStatusesToDispatch(event, ctx)
+		commitStatuses, err := s.findCommitStatusesToDispatch(event, ctx)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -88,12 +94,12 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 				continue
 			}
 
-			token, sender, done := s.getNotifierForAlerts(alert, err, ctx)
+			token, sender, done := s.constructNotifierForAlerts(alert, err, ctx)
 			if done {
 				return
 			}
 
-			notification := prepareNotificationEventForAlerts(event, alert)
+			notification := constructNotificationEventForAlerts(event, alert)
 
 			go s.dispatchNotification(sender, notification, token, "alert")
 		}
@@ -109,12 +115,12 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 				continue
 			}
 
-			token, sender, done := s.getNotifierForCommitStatuses(cs, err, ctx)
+			token, sender, done := s.constructNotifierForCommitStatuses(cs, err, ctx)
 			if done {
 				return
 			}
 
-			notification := prepareNotificationEventForCommitStatuses(event, cs, s.logger.Error)
+			notification := s.constructNotificationEventForCommitStatuses(ctx, event, cs)
 
 			go s.dispatchNotification(sender, notification, token, "commitstatus")
 		}
@@ -123,7 +129,7 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (s *EventServer) getEventFromBody(r *http.Request) (*events.Event, error) {
+func (s *EventServer) constructEventFromRequestBody(r *http.Request) (*events.Event, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Error(err, "reading the request body failed")
@@ -144,7 +150,7 @@ func (s *EventServer) getEventFromBody(r *http.Request) (*events.Event, error) {
 
 func (s *EventServer) dispatchNotification(n notifier.Interface, e events.Event, token string, source string) {
 	if err := n.Post(e, s.logger); err != nil {
-		err = redactTokenFromError(err, token, s.logger)
+		err = redactTokenFromError(err, token)
 
 		s.logger.Error(err, "failed to send notification",
 			"reconciler kind", e.InvolvedObject.Kind,
@@ -161,7 +167,7 @@ func (s *EventServer) dispatchNotification(n notifier.Interface, e events.Event,
 	}
 }
 
-func redactTokenFromError(err error, token string, log logr.Logger) error {
+func redactTokenFromError(err error, token string) error {
 	if token == "" {
 		return err
 	}
@@ -186,10 +192,8 @@ func cleanupMetadata(event *events.Event) {
 	meta := make(map[string]string)
 
 	if event.Metadata != nil && len(event.Metadata) > 0 {
-		// For backwards compatibility, include the revision without a group prefix
-		revisionKey := "revision"
-		if rev, ok := event.Metadata[revisionKey]; ok {
-			meta[revisionKey] = rev
+		if rev, ok := event.Metadata[RevisionKey]; ok {
+			meta[RevisionKey] = rev
 		}
 
 		// Filter other meta based on group prefix, while filtering out excludes
@@ -213,7 +217,7 @@ func inList(l []string, i string) bool {
 	return false
 }
 
-func prepareNotificationEventForAlerts(event *events.Event, alert v1beta1.Alert) events.Event {
+func constructNotificationEventForAlerts(event *events.Event, alert v1beta1.Alert) events.Event {
 	notification := *event.DeepCopy()
 	if alert.Spec.Summary != "" {
 		if notification.Metadata == nil {
@@ -227,46 +231,67 @@ func prepareNotificationEventForAlerts(event *events.Event, alert v1beta1.Alert)
 	return notification
 }
 
-func prepareNotificationEventForCommitStatuses(event *events.Event, cs v1beta2.CommitStatus, logError ErrorF) events.Event {
+func (s *EventServer) constructNotificationEventForCommitStatuses(ctx context.Context, event *events.Event, cs v1beta2.CommitStatus) events.Event {
 	notification := *event.DeepCopy()
 
 	if notification.Metadata == nil {
 		notification.Metadata = map[string]string{}
 	}
 
-	x := cs.Spec.Parameters
+	tplate := cs.Spec.Template
+	templateParams := s.retrieveTemplateParams(ctx, event, cs)
+	notification.Metadata[notifier.Key] = s.expandTemplate(tplate.Key, templateParams)
+	notification.Metadata[notifier.Description] = s.expandTemplate(tplate.Description, templateParams)
+	notification.Metadata[notifier.TargetUrl] = s.expandTemplate(tplate.TargetURL, templateParams)
 
-	var params map[string]interface{}
-
-	params["CommitStatus"] = cs
-	params["Event"] = event
-	// TODO:  add in referenes from e.g. configmaps here
-
-	// TODO:  rename CommitStatus.Parameters back to Template and add in a Parameters field
-
-	notification.Metadata[notifier.Key] = expand(x.Key, params, logError)
-	notification.Metadata[notifier.Description] = expand(x.Description, params, logError)
-	notification.Metadata[notifier.TargetUrl] = expand(x.TargetURL, params, logError)
-
-	notification.Metadata["summary"] = "Hello Commit Status!"
 	return notification
 }
 
-type ErrorF func(err error, msg string, keysAndValues ...interface{})
+// todo: only run this when the revision date of the configmap objects are newer than the saved revision date of the last time we retrieved data from them?
+// is that^ even necessary?
+func (s *EventServer) retrieveTemplateParams(ctx context.Context, event *events.Event, cs v1beta2.CommitStatus) map[string]interface{} {
+	templateParams := make(map[string]interface{})
+	templateParams[RevisionKey] = event.Metadata[RevisionKey]
+	templateParams["InvolvedObject"] = event.InvolvedObject
 
-// TODO:  the reconciler should parse and validate all templates
-// expand expands a string as a golang text template and returns the result.
-func expand(temp string, data map[string]interface{}, logError ErrorF) string {
-	if kt, err := template.New("").Parse(temp); err != nil {
-		buf := bytes.NewBufferString("")
-		if err = kt.Execute(buf, data); err == nil {
-			return buf.String()
+	for _, cmRef := range cs.Spec.Template.AdditionalParameters {
+		var cm corev1.ConfigMap
+		var namespace string
+		if cmRef.Namespace == "" {
+			namespace = cs.Namespace
 		} else {
-			logError(err, "Error executing template", "template", temp, "params", data)
+			namespace = cmRef.Namespace
 		}
-	} else {
-		logError(err, "Error parsing template", "template", temp)
+		err := s.kubeClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: cmRef.Name}, &cm)
+		if err != nil {
+			s.logger.Error(err, fmt.Sprintf("Error getting configmap %s in namespace %s", cmRef.Name, cmRef.Namespace))
+		}
+		if cm.Data != nil {
+			for k, v := range cm.Data {
+				s.logger.Info(cmRef.Name + "_" + k)
+				templateParams[cmRef.Name+"_"+k] = v
+			}
+		}
 	}
 
-	return temp
+	return templateParams
+}
+
+// TODO: the reconciler should parse and validate all templates. but how if this requires data from the event?
+// expandTemplate expands a string as a golang text template and returns the result.
+func (s *EventServer) expandTemplate(tplate string, params map[string]interface{}) string {
+	var renderedTemplate string
+	if kt, err := template.New("").Parse(tplate); err == nil {
+		buf := bytes.NewBufferString("")
+		if err = kt.Execute(buf, params); err != nil {
+			// todo: should this be added to the status of the commit status/alert?
+			s.logger.Error(err, "Error executing template", "template", tplate, "params", params)
+		}
+		renderedTemplate = buf.String()
+	} else {
+		// todo: should this be added to the status of the commit status/alert?
+		s.logger.Error(err, "Error parsing template", "template", tplate)
+	}
+
+	return renderedTemplate
 }

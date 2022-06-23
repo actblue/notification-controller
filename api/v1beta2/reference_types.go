@@ -47,3 +47,18 @@ type CrossNamespaceObjectReference struct {
 	// +optional
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
 }
+
+type CrossNamespaceConfigMapReference struct {
+	// Name of the referent
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=53
+	// +required
+	Name string `json:"name"`
+
+	// Namespace of the referent
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=53
+	// +kubebuilder:validation:Optional
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}

@@ -44,9 +44,9 @@ type CommitStatusSpec struct {
 	// +optional
 	ExclusionList []string `json:"exclusionList,omitempty"`
 
-	// Parameters specific to the configuration of commit statuses
+	// Template specific to the configuration of commit statuses
 	// +optional
-	Parameters CommitStatusParameters `json:"parameters,omitempty"`
+	Template CommitStatusTemplate `json:"template,omitempty"`
 
 	// This flag tells the controller to suspend subsequent events dispatching.
 	// Defaults to false.
@@ -54,7 +54,7 @@ type CommitStatusSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-type CommitStatusParameters struct {
+type CommitStatusTemplate struct {
 	// A string label to differentiate statuses from one another on a commit.
 	// GitHub calls this the commit status's "context".
 	// +required
@@ -64,12 +64,16 @@ type CommitStatusParameters struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// A URL to associate with this status so as to allow users
+	// A URL to associate with this status allowing users
 	// to easily see the source of the status from a link on the commit status.
 	// For example, if your continuous integration system is posting build status,
 	// you would want to provide the deep link for the build output for this specific SHA.
 	// +optional
 	TargetURL string `json:"targetUrl,omitempty"`
+
+	// List of ConfigMaps whose content contains additional parameters to be used in the rest of the template
+	// +optional
+	AdditionalParameters []CrossNamespaceConfigMapReference `json:"additionalParameters,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus

@@ -1,6 +1,6 @@
 package server
 
-//go:generate sh -c "sed -e 's/v1beta1.Alert/v1beta2.CommitStatus/g' -e 's/v1beta1/v1beta2/' -e 's/Alerts/CommitStatuses/g' -e 's/Alert/CommitStatus/g' -e 's/go:generate.*/ DO NOT EDIT -- generated from event_handlers_for_alerts.go/' event_handlers_for_alerts.go > event_handlers_for_commitstatuses.go"
+//go:generate sh -c "sed -e 's/v1beta1/v1beta2/' -e 's/Alerts/CommitStatuses/g' -e 's/alerts/commitStatuses/g' -e 's/Alert/CommitStatus/g' -e 's/alert/commitStatus/g' -e 's/go:generate.*/ DO NOT EDIT -- generated from event_handlers_for_alerts.go/' event_handlers_for_alerts.go > event_handlers_for_commitstatuses.go"
 
 import (
 	"context"
@@ -18,8 +18,8 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// getNotifierForAlerts -- returns a notifier object for the listed provider
-func (s *EventServer) getNotifierForAlerts(alert v1beta1.Alert, err error, ctx context.Context) (string, notifier.Interface, bool) {
+// constructNotifierForAlerts -- returns a notifier object for the listed provider
+func (s *EventServer) constructNotifierForAlerts(alert v1beta1.Alert, err error, ctx context.Context) (string, notifier.Interface, bool) {
 	var provider v1beta1.Provider
 	providerName := types.NamespacedName{Namespace: alert.Namespace, Name: alert.Spec.ProviderRef.Name}
 
@@ -141,8 +141,8 @@ func (s *EventServer) getNotifierForAlerts(alert v1beta1.Alert, err error, ctx c
 	return token, sender, false
 }
 
-// getAlertsToDispatch gets the list of alert CRs from the system
-func (s *EventServer) getAlertsToDispatch(event *events.Event, ctx context.Context) ([]v1beta1.Alert, error) {
+// findAlertsToDispatch gets the list of alert CRs from the system
+func (s *EventServer) findAlertsToDispatch(event *events.Event, ctx context.Context) ([]v1beta1.Alert, error) {
 	alerts := make([]v1beta1.Alert, 0)
 
 	var allAlerts v1beta1.AlertList

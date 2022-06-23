@@ -1,6 +1,6 @@
 package server
 
-// DO NOT EDIT -- generated file
+// DO NOT EDIT -- generated from event_handlers_for_alerts.go
 
 import (
 	"context"
@@ -18,10 +18,10 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// getNotifierForCommitStatuses -- returns a notifier object for the listed provider
-func (s *EventServer) getNotifierForCommitStatuses(alert v1beta2.CommitStatus, err error, ctx context.Context) (string, notifier.Interface, bool) {
+// constructNotifierForCommitStatuses -- returns a notifier object for the listed provider
+func (s *EventServer) constructNotifierForCommitStatuses(commitStatus v1beta2.CommitStatus, err error, ctx context.Context) (string, notifier.Interface, bool) {
 	var provider v1beta2.Provider
-	providerName := types.NamespacedName{Namespace: alert.Namespace, Name: alert.Spec.ProviderRef.Name}
+	providerName := types.NamespacedName{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.ProviderRef.Name}
 
 	err = s.kubeClient.Get(ctx, providerName, &provider)
 	if err != nil {
@@ -44,7 +44,7 @@ func (s *EventServer) getNotifierForCommitStatuses(alert v1beta2.CommitStatus, e
 	headers := make(map[string]string)
 	if provider.Spec.SecretRef != nil {
 		var secret corev1.Secret
-		secretName := types.NamespacedName{Namespace: alert.Namespace, Name: provider.Spec.SecretRef.Name}
+		secretName := types.NamespacedName{Namespace: commitStatus.Namespace, Name: provider.Spec.SecretRef.Name}
 
 		err = s.kubeClient.Get(ctx, secretName, &secret)
 		if err != nil {
@@ -90,7 +90,7 @@ func (s *EventServer) getNotifierForCommitStatuses(alert v1beta2.CommitStatus, e
 	var certPool *x509.CertPool
 	if provider.Spec.CertSecretRef != nil {
 		var secret corev1.Secret
-		secretName := types.NamespacedName{Namespace: alert.Namespace, Name: provider.Spec.CertSecretRef.Name}
+		secretName := types.NamespacedName{Namespace: commitStatus.Namespace, Name: provider.Spec.CertSecretRef.Name}
 
 		err = s.kubeClient.Get(ctx, secretName, &secret)
 		if err != nil {
@@ -141,31 +141,31 @@ func (s *EventServer) getNotifierForCommitStatuses(alert v1beta2.CommitStatus, e
 	return token, sender, false
 }
 
-// getCommitStatusesToDispatch gets the list of alert CRs from the system
-func (s *EventServer) getCommitStatusesToDispatch(event *events.Event, ctx context.Context) ([]v1beta2.CommitStatus, error) {
-	alerts := make([]v1beta2.CommitStatus, 0)
+// findCommitStatusesToDispatch gets the list of commitStatus CRs from the system
+func (s *EventServer) findCommitStatusesToDispatch(event *events.Event, ctx context.Context) ([]v1beta2.CommitStatus, error) {
+	commitStatuses := make([]v1beta2.CommitStatus, 0)
 
 	var allCommitStatuses v1beta2.CommitStatusList
 	err := s.kubeClient.List(ctx, &allCommitStatuses)
 	if err != nil {
-		s.logger.Error(err, "listing alerts failed")
-		return alerts, err
+		s.logger.Error(err, "listing commitStatuses failed")
+		return commitStatuses, err
 	}
 
-each_alert:
-	for _, alert := range allCommitStatuses.Items {
-		// skip suspended and not ready alerts
-		isReady := conditions.IsReady(&alert)
-		if alert.Spec.Suspend || !isReady {
-			continue each_alert
+each_commitStatus:
+	for _, commitStatus := range allCommitStatuses.Items {
+		// skip suspended and not ready commitStatuses
+		isReady := conditions.IsReady(&commitStatus)
+		if commitStatus.Spec.Suspend || !isReady {
+			continue each_commitStatus
 		}
 
-		// skip alert if the message matches a regex from the exclusion list
-		if len(alert.Spec.ExclusionList) > 0 {
-			for _, exp := range alert.Spec.ExclusionList {
+		// skip commitStatus if the message matches a regex from the exclusion list
+		if len(commitStatus.Spec.ExclusionList) > 0 {
+			for _, exp := range commitStatus.Spec.ExclusionList {
 				if r, err := regexp.Compile(exp); err == nil {
 					if r.Match([]byte(event.Message)) {
-						continue each_alert
+						continue each_commitStatus
 					}
 				} else {
 					s.logger.Error(err, fmt.Sprintf("failed to compile regex: %s", exp))
@@ -173,18 +173,18 @@ each_alert:
 			}
 		}
 
-		// filter alerts by object and severity
-		for _, source := range alert.Spec.EventSources {
+		// filter commitStatuses by object and severity
+		for _, source := range commitStatus.Spec.EventSources {
 			if source.Namespace == "" {
-				source.Namespace = alert.Namespace
+				source.Namespace = commitStatus.Namespace
 			}
 
-			if s.eventMatchesCommitStatus(ctx, event, source, alert.Spec.EventSeverity) {
-				alerts = append(alerts, alert)
+			if s.eventMatchesCommitStatus(ctx, event, source, commitStatus.Spec.EventSeverity) {
+				commitStatuses = append(commitStatuses, commitStatus)
 			}
 		}
 	}
-	return alerts, nil
+	return commitStatuses, nil
 }
 
 func (s *EventServer) eventMatchesCommitStatus(ctx context.Context, event *events.Event, source v1beta2.CrossNamespaceObjectReference, severity string) bool {

@@ -103,31 +103,11 @@ spec:
                   type: object
                 type: array
               exclusionList:
-                description: 'A list of Golang regular expressions to be used for
-                  excluding messages. TODO: should I keep this?'
+                description: A list of Golang regular expressions to be used for excluding
+                  messages.
                 items:
                   type: string
                 type: array
-              parameters:
-                description: Parameters specific to the configuration of commit statuses
-                properties:
-                  description:
-                    description: A short description of the status.
-                    type: string
-                  key:
-                    description: A string label to differentiate statuses from one
-                      another on a commit. GitHub calls this the commit status's "context".
-                    type: string
-                  targetUrl:
-                    description: A URL to associate with this status so as to allow
-                      users to easily see the source of the status from a link on
-                      the commit status. For example, if your continuous integration
-                      system is posting build status, you would want to provide the
-                      deep link for the build output for this specific SHA.
-                    type: string
-                required:
-                - key
-                type: object
               providerRef:
                 description: Send events using this provider.
                 properties:
@@ -141,6 +121,45 @@ spec:
                 description: This flag tells the controller to suspend subsequent
                   events dispatching. Defaults to false.
                 type: boolean
+              template:
+                description: Template specific to the configuration of commit statuses
+                properties:
+                  additionalParameters:
+                    description: List of ConfigMaps whose content contains additional
+                      parameters to be used in the rest of the template
+                    items:
+                      properties:
+                        name:
+                          description: Name of the referent
+                          maxLength: 53
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: Namespace of the referent
+                          maxLength: 53
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  description:
+                    description: A short description of the status.
+                    type: string
+                  key:
+                    description: A string label to differentiate statuses from one
+                      another on a commit. GitHub calls this the commit status's "context".
+                    type: string
+                  targetUrl:
+                    description: A URL to associate with this status allowing users
+                      to easily see the source of the status from a link on the commit
+                      status. For example, if your continuous integration system is
+                      posting build status, you would want to provide the deep link
+                      for the build output for this specific SHA.
+                    type: string
+                required:
+                - key
+                type: object
             required:
             - eventSources
             - providerRef

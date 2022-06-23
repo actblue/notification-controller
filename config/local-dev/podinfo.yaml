@@ -70,11 +70,23 @@ spec:
     - kind: Kustomization
       name: podinfo
   template:
-    key: cluster/{{ .info.ClusterName}}
-    description: Something {{ .quality.status }} happened on with SLA {{ .info.SLA }} that was {{ .InvolvedObject.Kind }}
-    targetUrl: http://www.google.com/?q={{.quality.SLA}}
-    parameters:
-      - kind: ConfigMap
-        key: info
-      - kind: ConfigMap
-        key: quality
+    key: "{{.InvolvedObject.Name}}/{{.InvolvedObject.Kind}}"
+    description: "{{ .info_boink }} and {{ .quality_SLA }}"
+    targetUrl: "http://www.google.com/"
+    additionalParameters:
+      - name: info
+      - name: quality
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: info
+data:
+  boink: yessir
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quality
+data:
+  SLA: "absolutely none1kj10!#8103"
