@@ -102,7 +102,21 @@ func (a AzureDevOps) Post(event events.Event, logger Logger) error {
 
 	// Check if the exact status is already set
 	g := genre
-	name, desc := formatNameAndDescription(event)
+	key, desc := formatNameAndDescription(event)
+	url := ""
+	// Metadata from the event handler overrides the default values above if
+	// they're specified in the user-facing CommitStatus resource.
+	if event.Metadata != nil {
+		if event.Metadata[Key] != "" {
+			key = event.Metadata[Key]
+		}
+		if event.Metadata[Description] != "" {
+			desc = event.Metadata[Description]
+		}
+		if event.Metadata[TargetUrl] != "" {
+			url = event.Metadata[TargetUrl]
+		}
+	}
 	createArgs := git.CreateCommitStatusArgs{
 		Project:      &a.Project,
 		RepositoryId: &a.Repo,
@@ -112,8 +126,9 @@ func (a AzureDevOps) Post(event events.Event, logger Logger) error {
 			State:       &state,
 			Context: &git.GitStatusContext{
 				Genre: &g,
-				Name:  &name,
+				Name:  &key,
 			},
+			TargetUrl: &url,
 		},
 	}
 	getArgs := git.GetStatusesArgs{

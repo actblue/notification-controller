@@ -113,14 +113,20 @@ func (g *GitHub) Post(event events.Event, logger Logger) error {
 		return err
 	}
 
-	var key, desc, url string
-
-	if event.Metadata != nil && event.Metadata[Key] == "" {
-		key, desc = formatNameAndDescription(event)
-	} else {
-		key = event.Metadata[Key]
-		desc = event.Metadata[Description]
-		url = event.Metadata[TargetUrl]
+	key, desc := formatNameAndDescription(event)
+	url := ""
+	// Metadata from the event handler overrides the default values above if
+	// they're specified in the user-facing CommitStatus resource.
+	if event.Metadata != nil {
+		if event.Metadata[Key] != "" {
+			key = event.Metadata[Key]
+		}
+		if event.Metadata[Description] != "" {
+			desc = event.Metadata[Description]
+		}
+		if event.Metadata[TargetUrl] != "" {
+			url = event.Metadata[TargetUrl]
+		}
 	}
 
 	status := &github.RepoStatus{

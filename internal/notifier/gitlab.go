@@ -85,20 +85,36 @@ func (g *GitLab) Post(event events.Event, logger Logger) error {
 		return err
 	}
 
-	name, desc := formatNameAndDescription(event)
+	key, desc := formatNameAndDescription(event)
+	url := ""
+	// Metadata from the event handler overrides the default values above if
+	// they're specified in the user-facing CommitStatus resource.
+	if event.Metadata != nil {
+		if event.Metadata[Key] != "" {
+			key = event.Metadata[Key]
+		}
+		if event.Metadata[Description] != "" {
+			desc = event.Metadata[Description]
+		}
+		if event.Metadata[TargetUrl] != "" {
+			url = event.Metadata[TargetUrl]
+		}
+	}
 	options := &gitlab.SetCommitStatusOptions{
-		Name:        &name,
-		Description: &desc,
 		State:       state,
+		Context:     &key,
+		Description: &desc,
+		TargetURL:   &url,
 	}
 
 	listOpts := &gitlab.GetCommitStatusesOptions{}
 
 	status := &gitlab.CommitStatus{
-		Name:        name,
+		Name:        key,
 		SHA:         rev,
 		Status:      string(state),
 		Description: desc,
+		TargetURL:   url,
 	}
 
 	statuses, _, err := g.Client.Commits.GetCommitStatuses(g.Id, rev, listOpts)

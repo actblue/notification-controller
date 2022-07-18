@@ -100,6 +100,20 @@ func (b Bitbucket) Post(event events.Event, logger Logger) error {
 	}
 
 	name, desc := formatNameAndDescription(event)
+	url := ""
+	// Metadata from the event handler overrides the default values above if
+	// they're specified in the user-facing CommitStatus resource.
+	if event.Metadata != nil {
+		if event.Metadata[Key] != "" {
+			name = event.Metadata[Key]
+		}
+		if event.Metadata[Description] != "" {
+			desc = event.Metadata[Description]
+		}
+		if event.Metadata[TargetUrl] != "" {
+			url = event.Metadata[TargetUrl]
+		}
+	}
 	// key has a limitation of 40 characters in bitbucket api
 	key := sha1String(name)
 
@@ -113,7 +127,7 @@ func (b Bitbucket) Post(event events.Event, logger Logger) error {
 		Key:         key,
 		Name:        name,
 		Description: desc,
-		Url:         "https://bitbucket.org",
+		Url:         url,
 	}
 
 	existingCommitStatus, err := b.Client.Repositories.Commits.GetCommitStatus(cmo, cso.Key)
