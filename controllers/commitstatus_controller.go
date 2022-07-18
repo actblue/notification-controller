@@ -19,8 +19,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"time"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,15 +31,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"text/template"
+	"time"
 
+	"github.com/fluxcd/notification-controller/api/v1beta2"
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	helper "github.com/fluxcd/pkg/runtime/controller"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/fluxcd/pkg/runtime/predicates"
 	kuberecorder "k8s.io/client-go/tools/record"
-
-	"github.com/fluxcd/notification-controller/api/v1beta2"
 )
 
 // This is already declared in the alert controller -- I'm not currently sure if we'll need to change this.
@@ -175,6 +174,32 @@ func (r *CommitStatusReconciler) validate(ctx context.Context, commitStatus *v1b
 		// log not found errors since they get filtered out
 		ctrl.LoggerFrom(ctx).Error(err, "failed to get provider %s", providerName.String())
 		return fmt.Errorf("failed to get provider '%s': %w", providerName.String(), err)
+	}
+
+	// validate the event sources
+	for _, eventSource := range commitStatus.Spec.EventSources {
+		if eventSource.Kind != "Kustomization" {
+			return fmt.Errorf("event source %s isn't of kind kustomization", eventSource.Kind)
+		}
+	}
+
+	// Validates various the templates of various keys under spec.template. Note that we can't fully do this here
+	// without event data. All other validation which requires event data (e.g. description length) will need to be done
+	// by downstream handlers and functions (such as the event handler).
+	if commitStatus.Spec.Template.Key != "" {
+		if _, err := template.New("").Parse(commitStatus.Spec.Template.Key); err != nil {
+			return fmt.Errorf("Error parsing template for .spec.template.key: '%w'", err)
+		}
+	}
+	if commitStatus.Spec.Template.Description != "" {
+		if _, err := template.New("").Parse(commitStatus.Spec.Template.Description); err != nil {
+			return fmt.Errorf("Error parsing template for .spec.template.description: '%w'", err)
+		}
+	}
+	if commitStatus.Spec.Template.TargetURL != "" {
+		if _, err := template.New("").Parse(commitStatus.Spec.Template.TargetURL); err != nil {
+			return fmt.Errorf("Error parsing template for .spec.template.targetUrl: '%w'", err)
+		}
 	}
 
 	if !conditions.IsReady(provider) {

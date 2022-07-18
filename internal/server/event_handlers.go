@@ -120,7 +120,11 @@ func (s *EventServer) handleEvent() func(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			notification := s.constructNotificationEventForCommitStatuses(ctx, event, cs)
+			var notification events.Event
+			notification, err = s.constructNotificationEventForCommitStatuses(ctx, event, cs)
+			if err != nil {
+				s.logger.Error(err, "")
+			}
 
 			go s.dispatchNotification(sender, notification, token, "commitstatus")
 		}
@@ -231,7 +235,7 @@ func constructNotificationEventForAlerts(event *events.Event, alert v1beta1.Aler
 	return notification
 }
 
-func (s *EventServer) constructNotificationEventForCommitStatuses(ctx context.Context, event *events.Event, cs v1beta2.CommitStatus) events.Event {
+func (s *EventServer) constructNotificationEventForCommitStatuses(ctx context.Context, event *events.Event, cs v1beta2.CommitStatus) (events.Event, error) {
 	notification := *event.DeepCopy()
 
 	if notification.Metadata == nil {
@@ -239,17 +243,29 @@ func (s *EventServer) constructNotificationEventForCommitStatuses(ctx context.Co
 	}
 
 	tplate := cs.Spec.Template
-	templateParams := s.retrieveTemplateParams(ctx, event, cs)
-	notification.Metadata[notifier.Key] = s.expandTemplate(tplate.Key, templateParams)
-	notification.Metadata[notifier.Description] = s.expandTemplate(tplate.Description, templateParams)
-	notification.Metadata[notifier.TargetUrl] = s.expandTemplate(tplate.TargetURL, templateParams)
+	templateParams, err := s.retrieveTemplateParams(ctx, event, cs)
+	if err != nil {
+		return notification, err
+	}
+	notification.Metadata[notifier.Key], err = s.expandTemplate(tplate.Key, templateParams)
+	if err != nil {
+		return notification, err
+	}
+	notification.Metadata[notifier.Description], err = s.expandTemplate(tplate.Description, templateParams)
+	if err != nil {
+		return notification, err
+	}
+	notification.Metadata[notifier.TargetUrl], err = s.expandTemplate(tplate.TargetURL, templateParams)
+	if err != nil {
+		return notification, err
+	}
 
-	return notification
+	return notification, nil
 }
 
 // todo: only run this when the revision date of the configmap objects are newer than the saved revision date of the last time we retrieved data from them?
 // is that^ even necessary?
-func (s *EventServer) retrieveTemplateParams(ctx context.Context, event *events.Event, cs v1beta2.CommitStatus) map[string]interface{} {
+func (s *EventServer) retrieveTemplateParams(ctx context.Context, event *events.Event, cs v1beta2.CommitStatus) (map[string]interface{}, error) {
 	templateParams := make(map[string]interface{})
 	templateParams[RevisionKey] = event.Metadata[RevisionKey]
 	templateParams["InvolvedObject"] = event.InvolvedObject
@@ -265,6 +281,7 @@ func (s *EventServer) retrieveTemplateParams(ctx context.Context, event *events.
 		err := s.kubeClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: cmRef.Name}, &cm)
 		if err != nil {
 			s.logger.Error(err, fmt.Sprintf("Error getting configmap %s in namespace %s", cmRef.Name, cmRef.Namespace))
+			return nil, err
 		}
 		if cm.Data != nil {
 			for k, v := range cm.Data {
@@ -274,24 +291,25 @@ func (s *EventServer) retrieveTemplateParams(ctx context.Context, event *events.
 		}
 	}
 
-	return templateParams
+	return templateParams, nil
 }
 
 // TODO: the reconciler should parse and validate all templates. but how if this requires data from the event?
 // expandTemplate expands a string as a golang text template and returns the result.
-func (s *EventServer) expandTemplate(tplate string, params map[string]interface{}) string {
+func (s *EventServer) expandTemplate(tplate string, params map[string]interface{}) (string, error) {
 	var renderedTemplate string
-	if kt, err := template.New("").Parse(tplate); err == nil {
+	kt, err := template.New("").Parse(tplate)
+	if err == nil {
 		buf := bytes.NewBufferString("")
 		if err = kt.Execute(buf, params); err != nil {
-			// todo: should this be added to the status of the commit status/alert?
 			s.logger.Error(err, "Error executing template", "template", tplate, "params", params)
+			return "", err
 		}
 		renderedTemplate = buf.String()
 	} else {
-		// todo: should this be added to the status of the commit status/alert?
 		s.logger.Error(err, "Error parsing template", "template", tplate)
+		return "", err
 	}
 
-	return renderedTemplate
+	return renderedTemplate, nil
 }
